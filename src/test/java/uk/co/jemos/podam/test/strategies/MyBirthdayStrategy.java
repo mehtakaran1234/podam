@@ -3,10 +3,11 @@
  */
 package uk.co.jemos.podam.test.strategies;
 
+import java.lang.annotation.Annotation;
 import java.util.Calendar;
+import java.util.List;
 
 import uk.co.jemos.podam.common.AttributeStrategy;
-import uk.co.jemos.podam.exceptions.PodamMockeryException;
 import uk.co.jemos.podam.test.utils.PodamTestUtils;
 
 /**
@@ -21,7 +22,8 @@ public class MyBirthdayStrategy implements AttributeStrategy<Calendar> {
 	 * 
 	 * {@inheritDoc}
 	 */
-	public Calendar getValue() throws PodamMockeryException {
+	@Override
+	public Calendar getValue(Class<?> attrType, List<Annotation> annotations) {
 
 		Calendar myBirthday = PodamTestUtils.getMyBirthday();
 

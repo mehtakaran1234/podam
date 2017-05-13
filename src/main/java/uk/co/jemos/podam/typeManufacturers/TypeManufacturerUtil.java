@@ -58,7 +58,8 @@ public abstract class TypeManufacturerUtil {
             List<Annotation> annotations, Class<?> attributeType)
             throws InstantiationException, IllegalAccessException, SecurityException, IllegalArgumentException, InvocationTargetException {
 
-        Iterator<Annotation> iter = annotations.iterator();
+        List<Annotation> localAnnotations = new ArrayList<Annotation>(annotations);
+        Iterator<Annotation> iter = localAnnotations.iterator();
         while (iter.hasNext()) {
             Annotation annotation = iter.next();
             if (annotation instanceof PodamStrategyValue) {
@@ -82,15 +83,9 @@ public abstract class TypeManufacturerUtil {
                 }
             }
 
-            Class<AttributeStrategy<?>> attrStrategyClass;
-            if ((attrStrategyClass = strategy.getStrategyForAnnotation(annotationClass)) != null) {
-                Constructor<AttributeStrategy<?>> ctor; 
-                try {
-                    ctor = attrStrategyClass.getConstructor(Annotation.class);
-                    return ctor.newInstance(annotation);
-                } catch(NoSuchMethodException e) {
-                    return attrStrategyClass.newInstance();
-                }
+            AttributeStrategy<?> attrStrategy = strategy.getStrategyForAnnotation(annotationClass);
+            if (null != attrStrategy) {
+                return attrStrategy;
             }
 
             if (annotation.annotationType().getAnnotation(Constraint.class) != null) {
@@ -110,15 +105,53 @@ public abstract class TypeManufacturerUtil {
         }
 
         AttributeStrategy<?> retValue = null;
-        if (!annotations.isEmpty()
+        if (!localAnnotations.isEmpty()
                 && !Collection.class.isAssignableFrom(attributeType)
                 && !Map.class.isAssignableFrom(attributeType)
                 && !attributeType.isArray()) {
 
-            retValue = new BeanValidationStrategy(annotations, attributeType);
+            retValue = new BeanValidationStrategy(attributeType);
         }
 
         return retValue;
+    }
+
+    /**
+     * Finds suitable static constructors for POJO instantiation
+     * <p>
+     * This method places required and provided types for object creation into a
+     * map, which will be used for type mapping.
+     * </p>
+     *
+     * @param factoryClass
+     *            Factory class to produce the POJO
+     * @param pojoClass
+     *            Typed class
+     * @return an array of suitable static constructors found
+     */
+    public static Method[] findSuitableConstructors(final Class<?> factoryClass,
+            final Class<?> pojoClass) {
+
+        // If no publicly accessible constructors are available,
+        // the best we can do is to find a constructor (e.g.
+        // getInstance())
+
+        Method[] declaredMethods = factoryClass.getDeclaredMethods();
+        List<Method> constructors = new ArrayList<Method>();
+
+        // A candidate factory method is a method which returns the
+        // Class type
+        for (Method candidateConstructor : declaredMethods) {
+
+            if (candidateConstructor.getReturnType().equals(pojoClass)) {
+                if (Modifier.isStatic(candidateConstructor.getModifiers())
+                        || !factoryClass.equals(pojoClass)) {
+                    constructors.add(candidateConstructor);
+                }
+            }
+        }
+
+        return constructors.toArray(new Method[constructors.size()]);
     }
 
     /**
@@ -169,11 +202,23 @@ public abstract class TypeManufacturerUtil {
             throw new IllegalArgumentException(msg);
         }
 
-        int i;
-        for (i = 0; i < typeParameters.size(); i++) {
-            typeArgsMap.put(typeParameters.get(i).getName(), genericTypes.get(0));
-            genericTypes.remove(0);
+        final Method[] suitableConstructors
+                = TypeManufacturerUtil.findSuitableConstructors(pojoClass, pojoClass);
+        for (Method constructor : suitableConstructors) {
+            TypeVariable<Method>[] ctorTypeParams = constructor.getTypeParameters();
+            if (ctorTypeParams.length == genericTypes.size()) {
+                for (int i = 0; i < ctorTypeParams.length; i++) {
+                    Type foundType = genericTypes.get(i);
+                    typeArgsMap.put(ctorTypeParams[i].getName(), foundType);
+                }
+            }
         }
+
+        for (int i = 0; i < typeParameters.size(); i++) {
+            Type foundType = genericTypes.remove(0);
+            typeArgsMap.put(typeParameters.get(i).getName(), foundType);
+        }
+
         Type[] genericTypeArgsExtra;
         if (genericTypes.size() > 0) {
             genericTypeArgsExtra = genericTypes.toArray(new Type[genericTypes.size()]);
@@ -190,7 +235,7 @@ public abstract class TypeManufacturerUtil {
                 ParameterizedType paramType = (ParameterizedType) superType;
                 Type[] actualParamTypes = paramType.getActualTypeArguments();
                 TypeVariable<?>[] paramTypes = clazz.getTypeParameters();
-                for (i = 0; i < actualParamTypes.length
+                for (int i = 0; i < actualParamTypes.length
                         && i < paramTypes.length; i++) {
                     if (actualParamTypes[i] instanceof Class) {
                         typeArgsMap.put(paramTypes[i].getName(),
@@ -445,6 +490,8 @@ public abstract class TypeManufacturerUtil {
      *
      * @param attributeType
      *            The attribute type, used for type checking
+     * @param annotations
+     *            Annotations attached to the attribute
      * @param attributeStrategy
      *            The {@link AttributeStrategy} to use
      * @return The value for the {@link PodamStrategyValue} annotation with
@@ -456,14 +503,15 @@ public abstract class TypeManufacturerUtil {
      *             safety.
      */
     public static Object returnAttributeDataStrategyValue(Class<?> attributeType,
-                                                    AttributeStrategy<?> attributeStrategy)
+            List<Annotation> annotations,
+            AttributeStrategy<?> attributeStrategy)
             throws IllegalArgumentException {
 
         if (null == attributeStrategy) {
             return null;
         }
 
-        Object retValue = attributeStrategy.getValue();
+        Object retValue = attributeStrategy.getValue(attributeType, annotations);
         if (retValue != null) {
 
             Class<?> desiredType = attributeType.isPrimitive() ?

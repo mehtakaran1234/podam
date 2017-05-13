@@ -3,7 +3,8 @@
  */
 package uk.co.jemos.podam.common;
 
-import uk.co.jemos.podam.exceptions.PodamMockeryException;
+import java.lang.annotation.Annotation;
+import java.util.List;
 
 /**
  * Generic contract for attribute-level data provider strategies.
@@ -16,12 +17,12 @@ public interface AttributeStrategy<T> {
 	/**
 	 * It returns a value of the given type
 	 * 
+	 * @param attrType
+	 *            an attribute's type
+	 * @param attrAnnotations
+	 *            list of annotations attached to an attribute
 	 * @return A value of the given type
-	 * 
-	 * @throws PodamMockeryException
-	 *             If an exception occurred while assigning the value specified
-	 *             by this strategy
 	 */
-	T getValue();
+	T getValue(Class<?> attrType, List<Annotation> attrAnnotations);
 
 }
